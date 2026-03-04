@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sims Overlay</title>
+<style>
+body { margin:0; overflow:hidden; background:transparent; }
+canvas { display:block; }
+</style>
+</head>
+<body>
+
+<script type="module">
+import * as THREE from './libs/three.module.js';
+import { GLTFLoader } from './libs/GLTFLoader.js';
+
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(
+  75,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  1000
+);
+
+camera.position.z = 20;
+// camera.position.y = 1;
+
+const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(10, 10, 10);
+scene.add(light);
+scene.add(new THREE.AmbientLight(0x888888));
+
+// ── Add or remove models here ─────────────────────────────────────────────
+// startX: horizontal starting position (spread them out so they don't overlap)
+// startDir: "right" or "left" — lets you stagger which way they face on load
+const simConfigs = [
+  { file: 'models/Dr.F.glb',    startX: 0, startDir: 'left' },
+  { file: 'models/Buddy.glb',  startX: -2, startDir: 'right'  },
+  { file: 'models/Chef.glb',  startX: 2, startDir: 'left'  },
+  { file: 'models/Candy.glb',  startX: -4, startDir: 'right'  },
+  { file: 'models/Poppy.glb',  startX: 4, startDir: 'left' },
+  { file: 'models/Chaz.glb',  startX: -6, startDir: 'right' },
+  { file: 'models/Travis.glb',  startX: 6, startDir: 'left' },
+  { file: 'models/Violet.glb',  startX: 8, startDir: 'right' },
+  { file: 'models/Nova.glb',  startX: -8, startDir: 'left' },
+  { file: 'models/Paul.glb',  startX: -10, startDir: 'right' },
+  { file: 'models/Evelyn.glb',  startX: 10, startDir: 'left' },
+  { file: 'models/Tobor.glb',  startX: -12, startDir: 'right' },
+];
+
+const FACE_RIGHT =  Math.PI / 2;
+const FACE_LEFT  = -Math.PI / 2;
+
+const loader = new GLTFLoader();
+const sims   = [];
+
+// ── Load each model using the same logic ─────────────────────────────────
+simConfigs.forEach(config => {
+
+  loader.load(config.file, gltf => {
+
+    const model = gltf.scene;
+
+    model.rotation.y = config.startDir === 'right' ? FACE_RIGHT : FACE_LEFT;
+    model.position.set(config.startX, 0, 0);
+    model.scale.set(1, 1, 1);
+
+    scene.add(model);
+
+    const mixer = new THREE.AnimationMixer(model);
+
+    const actions = {};
+    gltf.animations.forEach(clip => {
+      actions[clip.name.toLowerCase()] = mixer.clipAction(clip);
+    });
+
+    const walk = actions['walk'];
+    const idle = actions['idle'];
+    const wave = actions['wave'];
+    const turn = actions['turn'];
+
+    [walk, idle, wave, turn].forEach(a => {
+      if (!a) return;
+      a.setLoop(THREE.LoopOnce);
+      a.clampWhenFinished = false;
+    });
+
+    // ── Per-model state ───────────────────────────────────────────────────
+    let state          = "walk";
+    let direction      = config.startDir;
+    let stepsRemaining = randomSteps();
+    let pendingTurnTo  = null;
+
+    function facingAngle() {
+      return direction === "right" ? FACE_RIGHT : FACE_LEFT;
+    }
+
+    walk.play();
+
+    // ── Finished event ────────────────────────────────────────────────────
+    mixer.addEventListener("finished", e => {
+
+      if (e.action === walk && state === "walk") {
+        stepsRemaining--;
+        if (stepsRemaining > 0) {
+          walk.reset().play();
+        } else {
+          afterWalk();
+        }
+      }
+
+      if (e.action === turn && state === "turn") {
+        turn.stop();
+        model.rotation.y = pendingTurnTo;
+        pendingTurnTo = null;
+        resumeWalking();
+      }
+
+      if (e.action === wave && state === "wave") {
+        wave.stop();
+        model.rotation.y = facingAngle();
+        resumeWalking();
+      }
+
+    });
+
+    // After walk: 25% walk, 55% idle, 15% wave, 15% turn
+    function afterWalk() {
+      const r = Math.random();
+
+      if (r < 0.25) {
+        resumeWalking();
+
+      } else if (r < 0.80) {
+        enterIdle();
+
+      } else if (r < 0.85) {
+        if (wave) {
+          state = "wave";
+          walk.stop();
+          wave.reset().play();
+        } else {
+          resumeWalking();
+        }
+
+      } else {
+        doTurn();
+      }
+    }
+
+    // After idle: 60% idle again / 40% walk
+    function enterIdle() {
+      if (!idle) { resumeWalking(); return; }
+
+      state = "idle";
+      walk.stop();
+      idle.reset().play();
+
+      const onFinished = (e) => {
+        if (e.action !== idle) return;
+        mixer.removeEventListener("finished", onFinished);
+        idle.stop();
+        model.rotation.y = facingAngle();
+
+        if (Math.random() < 0.70) enterIdle();
+        else                       resumeWalking();
+      };
+      mixer.addEventListener("finished", onFinished);
+    }
+
+    // Turn
+    function doTurn() {
+      if (state === "turn") return;
+
+      state         = "turn";
+      direction     = direction === "right" ? "left" : "right";
+      pendingTurnTo = direction === "right" ? FACE_RIGHT : FACE_LEFT;
+
+      walk.stop();
+
+      if (turn) {
+        turn.reset();
+        turn.play();
+      } else {
+        setTimeout(() => {
+          model.rotation.y = pendingTurnTo;
+          pendingTurnTo = null;
+          resumeWalking();
+        }, 350);
+      }
+    }
+
+    // Walk
+    function resumeWalking() {
+      state = "walk";
+      stepsRemaining = randomSteps();
+      walk.reset().play();
+    }
+
+    function randomSteps() {
+      return Math.floor(Math.random() * 5 + 1);
+    }
+
+    sims.push({
+      model,
+      mixer,
+      state:     () => state,
+      direction: () => direction,
+      doTurn
+    });
+
+  });
+
+});
+
+// ── Animation loop ────────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const delta = clock.getDelta();
+
+  sims.forEach(sim => {
+    sim.mixer.update(delta);
+
+    if (sim.state() === "walk") {
+      const speed = 2;
+
+      if (sim.direction() === "right")
+        sim.model.position.x += delta * speed;
+      else
+        sim.model.position.x -= delta * speed;
+
+      if (sim.model.position.x >  20 && sim.direction() === "right") sim.doTurn();
+      if (sim.model.position.x < -20 && sim.direction() === "left")  sim.doTurn();
+    }
+  });
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+
+</body>
+</html>
