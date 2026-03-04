@@ -1,7 +1,16 @@
-Thank you to the following for the models they graciously posted online:
+# Sims Overlay
 
-Centrixe:
-Dr.F
-Buddy
-Chef Gino
-Candy the DJ
+A browser-based animated overlay featuring Sims-style characters built with Three.js.
+
+## Disclaimer
+I do not own any of the models used in this project. All characters and their respective assets belong to their original creators.
+
+## Model Credits
+All Models are Ripped by Centrixe (previously Tiramisu6) @ The Models Resource.
+https://www.models-resource.com/submitter/Centrixe/
+-------------------------------------------------------------------
+"You can shoot me a PM for whatever." -Centrixie
+https://www.vg-resource.com/user-31358.html
+
+## Built With
+- [Three.js](https://threejs.org/)
