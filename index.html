@@ -24,7 +24,6 @@ const camera = new THREE.PerspectiveCamera(
 );
 
 camera.position.z = 20;
-// camera.position.y = 1;
 
 const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -36,27 +35,23 @@ scene.add(light);
 scene.add(new THREE.AmbientLight(0x888888));
 
 // ── Add or remove models here ─────────────────────────────────────────────
-// startX: horizontal starting position (spread them out so they don't overlap)
-// startDir: "right" or "left" — lets you stagger which way they face on load
 const simConfigs = [
-  { file: 'models/Dr.F.glb',    startX: 0, startDir: 'left' },
-  { file: 'models/Buddy.glb',  startX: -2, startDir: 'right'  },
-  { file: 'models/Chef.glb',  startX: 2, startDir: 'left'  },
-  { file: 'models/Candy.glb',  startX: -4, startDir: 'right'  },
-  { file: 'models/Poppy.glb',  startX: 4, startDir: 'left' },
-  { file: 'models/Chaz.glb',  startX: -6, startDir: 'right' },
-  { file: 'models/Travis.glb',  startX: 6, startDir: 'left' },
-  { file: 'models/Violet.glb',  startX: 8, startDir: 'right' },
-  { file: 'models/Nova.glb',  startX: -8, startDir: 'left' },
-  { file: 'models/Paul.glb',  startX: -10, startDir: 'right' },
-  { file: 'models/Evelyn.glb',  startX: 10, startDir: 'left' },
-  //{ file: 'models/Tobor.glb',  startX: 12, startDir: 'right' }, //can't get to work will try at a later date
-  { file: 'models/Yuki.glb',  startX: 12, startDir: 'right' },
-  { file: 'models/Carl.glb',  startX: -12, startDir: 'left' },
-  { file: 'models/Wolfah.glb',  startX: -14, startDir: 'right' },
+  { file: 'models/Dr.F.glb',    startX:   0,  startDir: 'left'  },
+  { file: 'models/Buddy.glb',   startX:  -2,  startDir: 'right' },
+  { file: 'models/Chef.glb',    startX:   2,  startDir: 'left'  },
+  { file: 'models/Candy.glb',   startX:  -4,  startDir: 'right' },
+  { file: 'models/Poppy.glb',   startX:   4,  startDir: 'left'  },
+  { file: 'models/Chaz.glb',    startX:  -6,  startDir: 'right' },
+  { file: 'models/Travis.glb',  startX:   6,  startDir: 'left'  },
+  { file: 'models/Violet.glb',  startX:   8,  startDir: 'right' },
+  { file: 'models/Nova.glb',    startX:  -8,  startDir: 'left'  },
+  { file: 'models/Paul.glb',    startX: -10,  startDir: 'right' },
+  { file: 'models/Evelyn.glb',  startX:  10,  startDir: 'left'  },
+  { file: 'models/Yuki.glb',    startX: -12,  startDir: 'right' },
+  { file: 'models/Carl.glb',    startX:  12,  startDir: 'left'  },
+  { file: 'models/Wolfah.glb',  startX: -14,  startDir: 'right' },
+  { file: 'models/Tobor.glb',   startX:  14,  startDir: 'left'  },
 ];
-
-  //i plan on making new animations eventually
 
 const FACE_RIGHT =  Math.PI / 2;
 const FACE_LEFT  = -Math.PI / 2;
@@ -64,7 +59,6 @@ const FACE_LEFT  = -Math.PI / 2;
 const loader = new GLTFLoader();
 const sims   = [];
 
-// ── Load each model using the same logic ─────────────────────────────────
 simConfigs.forEach(config => {
 
   loader.load(config.file, gltf => {
@@ -84,18 +78,24 @@ simConfigs.forEach(config => {
       actions[clip.name.toLowerCase()] = mixer.clipAction(clip);
     });
 
-    const walk = actions['walk'];
-    const idle = actions['idle'];
-    const wave = actions['wave'];
-    const turn = actions['turn'];
+    const walk     = actions['walk'];
+    const idle     = actions['idle'];
+    const wave     = actions['wave'];
+    const turn     = actions['turn'];
+    const pause    = actions['pause'];    // 15 frame stand loop
+    const surprise = actions['surprise'];
 
-    [walk, idle, wave, turn].forEach(a => {
+    [walk, idle, wave, turn, pause, surprise].forEach(a => {
       if (!a) return;
       a.setLoop(THREE.LoopOnce);
       a.clampWhenFinished = false;
     });
 
-    // ── Per-model state ───────────────────────────────────────────────────
+    // pause clip loops 3 times before rolling — handled manually below
+    if (pause) {
+      pause.setLoop(THREE.LoopRepeat, 3);
+    }
+
     let state          = "walk";
     let direction      = config.startDir;
     let stepsRemaining = randomSteps();
@@ -132,17 +132,36 @@ simConfigs.forEach(config => {
         resumeWalking();
       }
 
+      if (e.action === surprise && state === "surprise") {
+        surprise.stop();
+        model.rotation.y = facingAngle();
+        resumeWalking();
+      }
+
+      if (e.action === pause && state === "pause") {
+        // 3 loops of pause stand finished — roll for next pause action
+        pause.stop();
+        rollPauseAction();
+      }
+
     });
 
-    // After walk: 25% walk, 55% idle, 15% wave, 15% turn
+    // ── After walk ────────────────────────────────────────────────────────
+    // walk: 18%, idle: 18%, pause: 17%, surprise: 17%, wave: 15%, turn: 15%
     function afterWalk() {
       const r = Math.random();
 
-      if (r < 0.25) {
+      if (r < 0.18) {
         resumeWalking();
 
-      } else if (r < 0.80) {
+      } else if (r < 0.36) {
         enterIdle();
+
+      } else if (r < 0.53) {
+        enterPause();
+
+      } else if (r < 0.70) {
+        enterSurprise();
 
       } else if (r < 0.85) {
         if (wave) {
@@ -158,7 +177,46 @@ simConfigs.forEach(config => {
       }
     }
 
-    // After idle: 60% idle again / 40% walk
+    // ── PAUSE ─────────────────────────────────────────────────────────────
+    // Plays the 15 frame stand animation 3 times, then rolls for next action
+    function enterPause() {
+      if (!pause) { resumeWalking(); return; }
+
+      state = "pause";
+      walk.stop();
+      model.rotation.y = facingAngle();
+      pause.reset().play();
+    }
+
+    // After 3x pause loops: walk 40%, wave 15%, surprise 15%, idle 15%, pause 15%
+    function rollPauseAction() {
+      const r = Math.random();
+
+      if (r < 0.40) {
+        resumeWalking();
+
+      } else if (r < 0.55) {
+        if (wave) {
+          state = "wave";
+          wave.reset().play();
+        } else {
+          resumeWalking();
+        }
+
+      } else if (r < 0.70) {
+        enterSurprise();
+
+      } else if (r < 0.85) {
+        enterIdle();
+
+      } else {
+        // Pause again — reset the 3x loop
+        enterPause();
+      }
+    }
+
+    // ── IDLE ──────────────────────────────────────────────────────────────
+    // After idle: 70% idle again / 30% walk
     function enterIdle() {
       if (!idle) { resumeWalking(); return; }
 
@@ -178,7 +236,17 @@ simConfigs.forEach(config => {
       mixer.addEventListener("finished", onFinished);
     }
 
-    // Turn
+    // ── SURPRISE ──────────────────────────────────────────────────────────
+    // Always exits to walk
+    function enterSurprise() {
+      if (!surprise) { resumeWalking(); return; }
+
+      state = "surprise";
+      walk.stop();
+      surprise.reset().play();
+    }
+
+    // ── TURN ──────────────────────────────────────────────────────────────
     function doTurn() {
       if (state === "turn") return;
 
@@ -200,7 +268,7 @@ simConfigs.forEach(config => {
       }
     }
 
-    // Walk
+    // ── WALK ──────────────────────────────────────────────────────────────
     function resumeWalking() {
       state = "walk";
       stepsRemaining = randomSteps();
@@ -208,7 +276,7 @@ simConfigs.forEach(config => {
     }
 
     function randomSteps() {
-      return Math.floor(Math.random() * 5 + 1);
+      return Math.floor(Math.random() * 5) + 1;
     }
 
     sims.push({
