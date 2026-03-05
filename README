@@ -14,3 +14,8 @@ https://www.vg-resource.com/user-31358.html
 
 ## Built With
 - [Three.js](https://threejs.org/)
+
+
+#INSTRUCTION (IMPORTANT)!!!!!!!!!!!!!!!!!!!!
+In order to use this with your OBS, you can either download all the files together, put them in a file together, and use the html file on the website overlay in OBS (there is a box for a local file under website)
+ALTERNATIVE: This repo is live and can be accessed remotely by putting this "https://gord-d.github.io/SimsOBS/" in the website link of your OBS overlay!
